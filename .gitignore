@@ -34,3 +34,7 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# DDD
+*.xml.gz
+*.ocr.zip
