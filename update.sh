@@ -13,10 +13,27 @@
 # You should have received a copy of the GNU Lesser General Public License 
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+oai_server=http://services.kb.nl/mdo/oai
+# key.sh contains your access key, e.g. key=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+source key.sh
+server=${oai_server}/${key}
+last=
+
 while true; do
-	startToken=`ls *.xml.gz -t | head -n 1 | sed -e 's/\.xml.gz//' -e 's/_/!/g'`
-	echo "Starting at token: $startToken"
-	curl --compress "http://services.kb.nl/mdo/oai?verb=ListRecords&set=DDD&metadataPrefix=didl&resumptionToken=$startToken" > records.xml
+	if [ -z "$last" ]; then
+		if [ -z "$(find . -name '*.xml.gz' -print)" ]; then
+			curl --compress "$server?verb=ListRecords&set=DDD&metadataPrefix=didl" > records.xml
+		else
+			last=$(ls *.xml.gz -t | head -n 1)
+		fi
+	fi
+
+	if [ ! -z "$last" ]; then
+		startToken=$(echo $last | sed -e 's/\.xml.gz//' -e 's/_/!/g')
+		echo "Starting at token: $startToken"
+		curl --compress "$server?verb=ListRecords&set=DDD&metadataPrefix=didl&resumptionToken=$startToken" > records.xml
+	fi
+
 	token=`tail records.xml | sed -n '/<resumptionToken>\(.*\)<\/resumptionToken>/p' | sed 's/^.*<resumptionToken>\(.*\)<\/resumptionToken>.*$/\1/' | sed 's/!/_/g'`
 	if [ "$token" == "" ]; then
 		from=`echo $startToken | cut -c 5-28`
@@ -29,7 +46,7 @@ while true; do
 			fi
 			echo "Trying alternative approach for token: $startToken till $nextToken"
 			until=`echo $nextToken | cut -c 5-28`
-			curl --compress "http://services.kb.nl/mdo/oai?verb=ListRecords&set=DDD&metadataPrefix=didl&from=$from&until=$until" > records.xml
+			curl --compress "$server?verb=ListRecords&set=DDD&metadataPrefix=didl&from=$from&until=$until" > records.xml
 			match=`sed -n '/noRecordsMatch/p' records.xml | wc -c`
 			if [ $match == 0 ]; then 
 				token=`echo $nextToken | sed 's/!/_/g'`
@@ -43,11 +60,12 @@ while true; do
 		done
 	fi
 	if [ "$token" == "" ]; then
-		tail records.xml | mail d.odijk@uva.nl -s "Harvesting done..."
+		tail records.xml | mail j.wielemaker@cwi.nl -s "Harvesting done..."
 		break
 	else
 		gzip records.xml
-		mv records.xml.gz $token.xml.gz
+		last="$token.xml.gz"
+		mv records.xml.gz $last
 	fi
 done
 
